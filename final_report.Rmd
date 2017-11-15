@@ -1,0 +1,286 @@
+---
+title: "Effect of Stereotype Threat on Mathematical Ability"
+output: html_document
+---
+
+## Methods & Statistics in Social Science 
+## Capstone Project - Milestone 6 - Final Report
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+## Data Processing
+
+# load libraries
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(knitr)
+library(DT)
+library(sm)
+library(xtable)
+
+# load dataset
+setwd("c:/users/conner/research_stats_amster")
+survey_data <- read.csv("Capstone_Datafile_October2017.csv", sep=";") 
+
+# attach principle dataset
+attach(survey_data)
+
+# remove duplicate variables
+survey_data <-  survey_data[,-c(which(names(survey_data)=="ST_ct"),
+                                which(names(survey_data)=="ST_t"),
+                                which(names(survey_data)=="ST_nt"))]
+
+# remove incomplete, non-consenting
+a <- nrow(survey_data)
+survey_data <- subset(survey_data, Finished==1 & consent==1)
+b <- nrow(survey_data)
+
+# transform raw math test data
+answers <- list(math6=1, math2=2, math3=5, math4=1, math8=4, math9=2)
+for(i in names(answers)){
+  for(j in 1:nrow(survey_data)){
+    survey_data[j, i] <- ifelse(survey_data[j, i]==answers[i], 1, 0)
+  }
+}
+
+# add new variable with total score of math test
+survey_data["math_total"] <- rowSums(
+  survey_data[, which(names(survey_data)=="math6"):
+                which(names(survey_data)=="math9")
+              ]
+  )
+
+# list of variables to be re-formated
+rvers <- c("ST_ind", "ST_biological_1", "ST_men_better_3", 
+          "ST_mind_calculations_1", "ST_scientist_1")
+
+# re-format scores so that high scores reflect strong belief in stereotype
+for(each in rvers){
+  survey_data[,each] <- sapply(survey_data[,each], function(x) 6-x)
+}
+
+# add stereotype strength score
+survey_data["st_score"] <- rowSums(
+  survey_data[, which(names(survey_data)=="ST_ind"):
+                which(names(survey_data)=="ST_scientist_1")])
+
+# change NA values to 0 in treatment group columns
+survey_data[,7:9]  <- survey_data[,7:9]%>%
+  replace_na(list(ST_CT=0, ST_T=0, ST_NT=0))
+
+# add treatment group variable
+survey_data["group"] <- ifelse(survey_data$ST_CT==1, "Counter-Threat", 
+                               ifelse(survey_data$ST_T==1, "Threat", "Non-Threat"))
+survey_data["group"] <- as.factor(survey_data$group)
+
+# change gender variable to class=factor, use names
+survey_data["gender"] <- ifelse(survey_data$gender==1, "male", "female")
+survey_data["gender"] <- as.factor(survey_data$gender)
+
+# change stereotype score and education level to factor
+survey_data["st_score"] <- as.factor(as.character(survey_data$st_score))
+survey_data["eduction"] <- as.factor(as.character(survey_data$education))
+
+# add gender*group variable
+survey_data["gender.group"] <- survey_data$gender:survey_data$group
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 1"}
+# density plots of math test scores by gender
+attach(survey_data)
+sm.density.compare(math_total, gender, xlab="Math Test Score")
+title(main="Math Test Score Distributions by Gender")
+colfill<-c(2:(2+length(levels(gender)))) 
+legend(x="bottomright", legend=levels(gender), fill=colfill)
+```
+
+
+### Abstract
+
+Stereotype threat involves latent, internalized biases that can be constellated by external conditions or environmental cues affecting stereotype linked behaviors and postively or negatively skewing their performance measures. The present research focused on gender-specific stereotypes around mathmatical and analytical ability that insist that men in general demonstrate more natural ability in mathematics. Tests of stereotype threat centered around the activation of stereotypes using linguistic cues embedded (either as references to mathematics or bias-neutral wording) in the instructions of the study's principle instrument, a six-question math test. In the threat activating treatment, the instructions specifically and repeatedly referred to the test as mathematical, while in the another treatment language commonly associated with gender-specific stereotypes surrounding math ability was avoided and instead replaced with more neutral terms such as "puzzles". Participants were randomly assigned to these treatment groups and a third that used language designed to counteract stereotypes. The groups were stratified by gender to test the main hypothesis of stereotype threat being gender based. The findings after comparing the interaction of the three manipulation groups and gender did not show significant correlation between the principle hypothesized differences using the present study design. While differences in interaction test means were not statistically significant distributions did hint at the possibility of an effect. Due to a small interaction group sample size, which was a constant issues during analysis of the survey results, the power of any statistical conclusions were reduced. Results are were preliminary and any conclusions about the relationships between interaction groups' mean test results is best reserved for more rigorous replication.
+
+
+
+
+### Analysis
+
+The study hypothesis included several expectations based on interactions between the treatment and gender variables. Wording variations in math test instructions constituted the only differences in the three treatment groups, and all statistical analyses were based on scores on the math test which was identical across all interaction groups. The resulting mean math test scores and corresponding standard deviations are summarized in the Table 1 below. Overall, untreated scores by gender were nearly identical in both their mean, variations($\bar{x}_m$ = `r round(mean(survey_data[survey_data$gender=="male",]$math_total), 3)`, $s_m$ = `r round(sd(survey_data[survey_data$gender=="male",]$math_total), 3)`; $\bar{x}_f$ = `r round(mean(survey_data[survey_data$gender=="female",]$math_total), 3)`, $s_f$ = `r round(sd(survey_data[survey_data$gender=="female",]$math_total), 3)`), and  their left-skewed distributions (Fig. 1).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, tidy=TRUE}
+# create table of results
+mean_math_score <- sapply(split(survey_data$math_total, 
+             list(survey_data$gender, survey_data$group), 
+             drop=TRUE), mean)
+
+stddv <- sapply(split(survey_data$math_total, 
+             list(survey_data$gender, survey_data$group), 
+             drop=TRUE), sd)
+
+n <- survey_data%>%
+  group_by(group, gender)%>%
+  summarise(n=n())%>%
+  select(n)
+
+# transform to list to accommodate different data types within columns
+tbl1 <- data.frame(rbind(n$n, mean_math_score, stddv))
+tbl1 <- transform(tbl1, male.Counter.Threat=as.list(male.Counter.Threat),
+                        female.Counter.Threat=as.list(female.Counter.Threat),
+                        female.Non.Threat=as.list(female.Non.Threat),
+                        male.Non.Threat=as.list(male.Non.Threat),
+                        female.Threat=as.list(female.Threat),
+                        male.Threat=as.list(male.Threat))
+rownames(tbl1)[1] <- "N=" 
+
+kable(tbl1, align='c', caption="Table 1")
+
+
+```
+
+
+The small and uneven sample sizes per interaction group, the differences in variances, and skewed distributions of some of the interaction groups (Fig. 2) complicated analysis and were addressed before beginning. A small sample size has serious implications in statistical analysis and can potentially cast doubt on the reported results by reducing power and increasing the vulneratiblity to Type I and II errors. To mitigate the negative effects of small samples on the reported results several steps were taken. It has been widely reported and cited that the validity of statistical results on small sample sizes is correlated to effect size. With this in mind a preliminary test of effect size, in this case an R-squared value ($R^2$ = `r round(summary(lm(math_total ~ gender.group, data=survey_data))$r.squared,3)`) was used to gauge the strength of the eventual statistical analyses. The value of the chosen effect size measure was relatively low suggesting either a weak correlative effect or low statistical power using the given samples. Had the $R^2$ value been higher, higher statistical power in the chosen tests would have been more likely and rate of Type II errors would have been lower. Instead, caution was exercised in interpreting the results of the statistical tests carried out. To compensate for the condition of equal variances being violated (potentially due to small sample size), a Welch two independent means t-test was used instead of a standard t-test. Even though the skewed distributions of math test scores were clearly not universally normal as assumed even in case of the Welch test, the population mean was assumed to be near normal as is frequently the case with test score distributions. With the small sample size, even those that do show an apparent normal distribution (Fig. 2) are not guaranteed to be centered on the true population mean, again, raising the threat of Type I or II errors. 
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, tidy=TRUE, fig.align='center', fig.cap="Figure 2"}
+# boxplot of test scores by interaction
+ggplot(survey_data)+
+  geom_boxplot(aes(x=gender.group, y=math_total))+
+  theme_classic()+
+  labs(title="Math Test Scores by Interaction")+
+  theme(axis.text.x = element_text(angle=70, hjust=1),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        plot.title = element_text(hjust=0.5))
+```
+
+Despite not completely meeting the conditions for a t-test, the Welch's test was still used n liue of a non-parametric test. To further compensate for issues attributable to small sample size, the alpha critical value compared with the t-test p-value was relaxed slightly in order to avoid possible Type II errors. 
+
+As a first step and to test broadly for statistically significant differences between the any two of the interaction groups, an ANOVA test was performed. The results are summarized in Table 2 below.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+model <- lm(math_total ~ gender*group, data=survey_data)
+kable(anova(model), caption = "Table 2")
+```
+
+The analysis of variance shows that there is no statistically significant difference between any two of the interaction groups. It is also interesting to note that while the difference in performance on the math test between genders alone is almost nill (F(gender,group)=0.010, p=0.921), as seen in Fig. 1, the added dimension of stereotype threat while still not statistically significant shows a much stronger correlation (F=1.799, p-value=0.178). Due to this apparent influence, the decision to relax somewhat the critical value for significance, and the issues with unequal variance, a series of post-hoc Welch t-tests were also performed on interaction groups included in the study hypothesis.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# t-test functions with args for gender and manipulation group variable names
+t_test <- function(g, cg1, cg2, alt){
+  results <- t.test(x=survey_data[survey_data$gender==g &
+                                  survey_data$group==cg1,]$math_total,
+                    y=survey_data[survey_data$gender==g & 
+                                  survey_data$group==cg2,]$math_total,
+                    alternative=alt, paired=FALSE, conf.level = 0.95)
+  return(c(results$statistic[[1]], results$p.value))
+}
+?t.test
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# t-test comparing means of women in counter-threat and threat groups
+r1 <- t_test("female", "Counter-Threat", "Threat", "greater")
+
+# t-test comparing means of women in non-threatening and counter-threat groups
+r2 <- t_test("female", "Non-Threat", "Counter-Threat", "greater")
+
+# t-test of means for men in threat and counter-threat groups
+r3 <- t_test("male", "Threat", "Counter-Threat", "greater")
+
+# t-test of means for men in threat and non-threat groups
+r4 <- t_test("male", "Threat", "Non-Threat", "greater")
+
+# t_test for men in counter-threat and non-threat groups
+r5 <- t_test("male", "Counter-Threat", "Non-Threat", "two.sided")
+
+```
+
+The study hypothesis makes several assertions in order to cover the multiple interactions that would support a generalized hypothesis linking stereotype threat and gender positively for males and negatively for females. The hypothesis first posits that female participants in the counter-threat condition would perform better than female participants in the countered threat condition. The female participants who were exposed to test instructions with stereotype activating instructions did not differ significantly from female participants who were exposed to non-threatening test instructions in their mean math test scores (t = `r r1[1]`, p = `r r1[2]`). Likewise, there was no significant difference in the mean test scores (t = `r r2[1]`, p = `r r2[2]` ) between females in the non-threat and the counter-threat groups, evidence against the second part of the study hypothesis which asserted that females in the non-threat group would perform better on the math test. Although, the difference in mean math test scores does not show statistical significance under the convention critical value ($\alpha$ = 0.05), the comparative plot of density distributions (Fig. 3) points to the stereotype treatments indeed having an effect on mean scores.  
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.align="center", fig.cap="Figure 3", tidy=TRUE}
+# density plot of females test scores between threat and non-threat groups
+female_plt_data <- subset(survey_data, gender=="female")
+sm.density.compare(female_plt_data$math_total, female_plt_data$group, 
+                   xlab="Math Test Scores")
+title(main="Distribution of Math Test Scores for Females")
+# add legend
+colfill<-c(2:(2+length(levels(survey_data$group)))) 
+legend(x="topleft", legend=levels(survey_data$group), fill=colfill)
+
+```
+
+
+In the case of males, no significant difference was found between the mean test scores between the threat and counter-threat groups (t = `r r3[1]`, p = `r r3[2]`). The survey results and analysis did find statistical support for the hypothesis that males in the counter-threat and non-threat groups would have equal test scores. The mean test scores of these two groups, while not exactly equal did not show a statistically significant difference in their means ($H_0$: $\mu_{ct}\neq \mu_{nt}$, t = `r r5[1]`, p = `r r5[2]`). 
+
+The comparison of interactions that stood out as most statisically significant was among males between the threat and non-threat groups (t = `r r4[1]`, p = `r r4[2]`). For the purposes of the present study the statistic was counted as significant and the two interactions flagged for further investigation. The statistic indirectly supported the ideas behind the hypothesis, that sensitivity to stereotype threat is correlated to gender. The study hypothesis primarily looked for the association through differences in math test scores for females between threat levels. The difference in means among males between the threat and non-threat groups suggests that the posited stereotypes converse may also be valid, that the activation of the stereotype that men are better at math affects the mathematical abilities of males positively while the scores of those in treatment groups where stereotype activation was eliminated or compensated for showed more lackluster results.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.align='center', fig.cap="Figure 4"}
+# density plot of males test scores between threat and non-threat groups
+male_plt_data <- subset(survey_data, gender=="male")
+sm.density.compare(male_plt_data$math_total, male_plt_data$group, 
+                   xlab="Math Test Scores")
+title(main="Distribution of Math Test Scores for Males")
+# add legend
+colfill<-c(2:(2+length(levels(survey_data$group)))) 
+legend(x="topleft", legend=levels(survey_data$group), fill=colfill)
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# additional variance tests on same interactions by inherent stereotype bias
+model_stbias <- lm(math_total ~ gender*as.numeric(st_score), data=survey_data)
+Fscore_bias <- anova(model_stbias)
+Fscore_bias_F <- Fscore_bias$`F value`
+Fscore_bias_p <- Fscore_bias$`Pr(>F)`
+P_bias <- anova(model_stbias)["gender:group:st_score" ,"Pr(>F)"]
+
+
+# additional variance test on same interactions by education level
+model_edu <- lm(math_total ~ gender*as.numeric(education), data=survey_data)
+Fscore_edu <- anova(model_edu)
+Fscore_edu_F <- Fscore_edu$`F value`
+Fscore_edu_p <- Fscore_edu$`Pr(>F)`
+
+# test for education alone
+model_edu_only <- summary(lm(math_total~education, data=survey_data))
+Fscore_edu_only <- model_edu_only$fstatistic[[1]]
+```
+
+
+
+
+The study hypothesis also proposed that the further interaction of gender and treatment groups would be significantly impacted by two factors, education level and level of inherent stereotype bias. The latter was calculated as the sum of the score on the five Likert scale survey items that followed the math test (Fig. 5). By scoring inherent stereotype bias in each participant, the study sought to refine the measure of stereotype threat on mathematical performance by isolating those participants who have strong latent stereotype biases. Nonetheless, the added dimension of latent bias did not prove to be statistically significant using an analysis of variance test (F = `r Fscore_bias_F`, p = `r Fscore_bias_p`). Similarly, education was not significantly related, in conjuction with the factors of gender and stereotype threat, to math test scores (F = `Fscore_edu_F`, p = `r Fscore_edu_p`). On the other hand, education in isolation was significantly correlated to mean math test scores before controlling for gender or stereotype threat (F = `r Fscore_edu_only`, p = 0.0496).
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, fig.align='center', fig.cap="Figure 5"}
+# histogram of stereotype scores for men
+attach(survey_data)
+sm.density.compare(as.numeric(st_score), gender, xlab="Bias Test Score")
+title(main="Distribution of Latent Stereotype Bias Scores by Gender")
+
+# add legend
+colfill<-c(2:(2+length(levels(gender)))) 
+legend(x="topright", legend=levels(gender), fill=colfill)
+```
+
+
+
+
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.align='center', fig.cap="Figure 6"}
+# density plots of math test scores by interaction group
+attach(survey_data)
+sm.density.compare(math_total, gender.group, xlab="Math Test Score")
+title(main="Math Test Score Distributions by Interaction Group")
+colfill<-c(2:(2+length(levels(gender.group)))) 
+legend(x="bottom", legend=levels(gender.group), fill=colfill, cex=0.75)
+```
+
+### Criticism
+
+Among the limitations that the study faced were a small sample size per interaction group, difficulty in meeting the conditions for parametric tests, threat of Type I and II errors, and risk of false inference. Most of these are in one way or another attributable to low participant recruitment and resulting low N values. Designing a study with higher participation, either by widening the broadcast of the questionnaire or extending the response window, would correct many of the detracting factors listed above. Because of the limitations of this study, the findings should be considered preliminary but also good priors for forming future hypotheses and designing future studies. 
+
+
+
